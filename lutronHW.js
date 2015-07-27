@@ -1,9 +1,10 @@
 var net = require('net');
 var _ = require('lodash');
 var server = {};
+var connection = {};
 var buffer = [];
 
-
+// Repeatedly checks the buffer of server responses to a record that matches the target light
 function checkBuffer (address, brightness, callback) {
     var timeStamp = Date.now();
 
@@ -26,41 +27,58 @@ function checkBuffer (address, brightness, callback) {
     }, 5000);
 }
 
-module.exports = {
+// Opens the connection to the server and sets up a listener for data events
+function open (options, callback) {
+    server = net.connect({host:options.host, port:options.port, family:4}, function() {
+        server.setKeepAlive();
+        server.write(options.username + "," + options.password + '\n');
 
-    open: function(options, callback) {
-        server = net.connect({host:options.host, port:options.port, family:4}, function() {
-            server.setKeepAlive();
-            server.write(options.username + "," + options.password + '\n');
+        server.on('data', function(data) {
 
-            server.on('data', function(data) {
-
-                // Add notifications of dimmer levels to a buffer
-                splitData = data.toString().split('\r\n');
-                _.each(splitData, function(line) {
-                    if (line.substr(0,2) == 'DL') { // keeps only dimmer level reporting responses
-                        buffer[buffer.length] = {
-                            light: line
-                                .replace(/(.*?\[|\].*)/g, '') // extracts the light number alone
-                                .replace(/:/g, '.') // replaces colons with dots
-                                .replace(/\d{2}/g, function(str) { // reduces each two-character text number to an actual number
-                                    return Number(str)
-                                }),
-                            brightness: line.replace(/.*?\],/g, '')*1,
-                            timeStamp: Date.now()
-                        };
-                    }
-                });
-
-                // Make sure the buffer does not grow indefinitely
-                if (buffer.length > 200) {
-                    buffer.shift(buffer.length-200)
+            // Add notifications of dimmer levels to a buffer
+            splitData = data.toString().split('\r\n');
+            _.each(splitData, function(line) {
+                if (line.substr(0,2) == 'DL') { // keeps only dimmer level reporting responses
+                    buffer[buffer.length] = {
+                        light: line
+                            .replace(/(.*?\[|\].*)/g, '') // extracts the light number alone
+                            .replace(/:/g, '.') // replaces colons with dots
+                            .replace(/\d{2}/g, function(str) { // reduces each two-character text number to an actual number
+                                return Number(str)
+                            }),
+                        brightness: line.replace(/.*?\],/g, '')*1,
+                        timeStamp: Date.now()
+                    };
                 }
-
             });
 
-            callback();
+            // Make sure the buffer does not grow indefinitely
+            if (buffer.length > 256) {
+                buffer.shift(buffer.length-256)
+            }
         });
+
+        callback();
+    });
+}
+
+// Writes commands to the server and reconnects if necessary
+function write (command) {
+    try {
+        server.write(command);
+    }
+    catch (err) {
+        open(connection, function() {
+            server.write(command);
+        })
+    }
+}
+
+module.exports = {
+
+    init: function (options, callback) {
+        connection = options;
+        open(connection, callback);
     },
 
     setLight: function(light, brightness, callback) {
@@ -70,7 +88,7 @@ module.exports = {
             + ',' + 0 // delay
             + ',' + light
             + '\n';
-        server.write(command);
+        write(command);
         console.log('Setting light ' + light + ' to ' + brightness + '%');
         checkBuffer(light, brightness, callback);
     },
@@ -80,7 +98,7 @@ module.exports = {
         var command = 'rdl'
             + ',' + light
             + '\n';
-        server.write(command);
+        write(command);
         console.log('Reading brightness for ' + light);
         checkBuffer(light, null, callback);
     },
@@ -91,7 +109,7 @@ module.exports = {
             + ',0,0'
             + ',' + shade
             + '\n';
-        server.write(command);
+        write(command);
         console.log('Setting shade ' + shade + ' to ' + level + '%');
         checkBuffer(shade, level, callback);
     },
