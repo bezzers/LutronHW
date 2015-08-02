@@ -95,7 +95,7 @@ module.exports = {
     getLight: function(light, callback) {
         // Reads from the buffer where possible, else requests the light level directly
         var latestResult = _.findLast(buffer, function (element) {
-            return element.light == address
+            return element.light == light
         });
         if (latestResult != undefined) {
             callback(false, latestResult)
