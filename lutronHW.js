@@ -93,13 +93,20 @@ module.exports = {
     },
 
     getLight: function(light, callback) {
-        var success = false;
-        var command = 'rdl'
-            + ',' + light
-            + '\n';
-        write(command);
-        console.log('Reading brightness for ' + light);
-        checkBuffer(light, null, callback);
+        // Reads from the buffer where possible, else requests the light level directly
+        var latestResult = _.findLast(buffer, function (element) {
+            return element.light == address
+        });
+        if (latestResult != undefined) {
+            callback(false, latestResult)
+        } else {
+            var command = 'rdl'
+                + ',' + light
+                + '\n';
+            write(command);
+            console.log('Reading brightness for ' + light);
+            checkBuffer(light, null, callback);
+        }
     },
 
     setShade: function(shade, level, callback) {
