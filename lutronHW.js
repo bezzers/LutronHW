@@ -35,11 +35,11 @@ function open (options, callback) {
 
         server.on('data', function(data) {
 
-            // Add notifications of dimmer levels to a buffer
+            // Add notifications of dimmer levels to a buffer, replacing any prior entries
             splitData = data.toString().split('\r\n');
             _.each(splitData, function(line) {
                 if (line.substr(0,2) == 'DL') { // keeps only dimmer level reporting responses
-                    buffer[buffer.length] = {
+                    var newItem = {
                         light: line
                             .replace(/(.*?\[|\].*)/g, '') // extracts the light number alone
                             .replace(/:/g, '.') // replaces colons with dots
@@ -49,13 +49,12 @@ function open (options, callback) {
                         brightness: line.replace(/.*?\],/g, '')*1,
                         timeStamp: Date.now()
                     };
+                    _.remove(buffer, function(item) {
+                        return (item.light == newItem.light)
+                    });
+                    buffer[buffer.length] = newItem;
                 }
             });
-
-            // Make sure the buffer does not grow indefinitely
-            if (buffer.length > 256) {
-                buffer.shift(buffer.length-256)
-            }
         });
 
         callback();
